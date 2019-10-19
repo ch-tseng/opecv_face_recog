@@ -8,6 +8,86 @@ import math
 import dlib
 from sklearn.externals import joblib
 import _pickle as cPickle
+from scipy.spatial import distance
+
+
+class webCam:
+    def __init__(self, id=0, videofile="", size=(1920, 1080)):
+        self.camsize = size
+        #for FPS count
+        self.start_time = time.time()
+        self.last_time = time.time()
+        self.total_frames = 0
+        self.last_frames = 0
+        self.fps = 0
+
+        if(len(videofile)>0):
+            self.cam = cv2.VideoCapture(videofile)
+            self.playvideo = True
+        else:
+            self.cam = cv2.VideoCapture(id)
+            #self.cam = cv2.VideoCapture(cv2.CAP_DSHOW+id)
+            self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
+            self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
+            self.playvideo = False
+
+    def fps_count(self, seconds_fps=10):
+        fps = self.fps
+
+        timenow = time.time()
+        if(timenow - self.last_time)>seconds_fps:
+            fps  = (self.total_frames - self.last_frames) / (timenow - self.last_time)
+            self.last_frames = self.total_frames
+            self.last_time = timenow
+            self.fps = fps
+
+        return round(fps,2)
+
+    def working(self):
+        webCam = self.cam
+        if(webCam.isOpened() is True):
+            return True
+        else:
+            if(self.playvideo is True):
+                return True
+            else:
+                return False
+
+    def camRealSize(self):
+        webcam = self.cam
+        width = int(webcam.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(webcam.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        return (width, height)
+
+    def getFrame(self, rotate=0, vflip=False, hflip=False, resize=None):
+        webcam = self.cam
+        hasFrame, frame = webcam.read()
+        if(frame is not None):
+            if(vflip==True):
+                frame = cv2.flip(frame, 0)
+            if(hflip==True):
+                frame = cv2.flip(frame, 1)
+    
+            if(rotate>0):
+                frame = imutils.rotate_bound(frame, rotate)
+            if(resize is not None):
+                frame_resized = cv2.resize(frame, resize, interpolation=cv2.INTER_CUBIC)
+            else:
+                frame_resized = None
+
+        else:
+            frame = None
+            hasFrame = False
+            frame_resized = None
+
+        self.total_frames += 1
+
+
+        return hasFrame, frame_resized, frame
+
+    def release(self):
+        webcam = self.cam
+        webcam.release()
 
 class faceRecognizer:
     def __init__(self, modelPath):
@@ -44,6 +124,49 @@ class faceRecognizer:
 
         return faceDescriptor
 
+    def l2_normalize(self, x, axis=-1, epsilon=1e-10):
+        output = x / np.sqrt(np.maximum(np.sum(np.square(x), axis=axis, keepdims=True), epsilon))
+        return output
+
+    def calc_dist(self, face0, face1):
+        try:
+            face_0 = self.l2_normalize(np.concatenate(face0))
+            face_1 = self.l2_normalize(np.concatenate(face1))
+        except:
+            logging.info("[error except] def calc_dist() error except")
+            return None
+
+        if (len(face_0) != len(face_1)):
+            return None
+
+        dist = distance.euclidean(face_0, face_1)
+        #dist2 = np.linalg.norm(face_0-face_1, axis=1)
+
+        return dist
+
+    def verify_face(self, aligned_face):
+        embs = self.get_embs(aligned_face)
+        people_info, score = self.compare_embs(embs)
+
+        return people_info, score        
+
+    def compare_embs(self, sb_emb):
+        embsALL = self.embs_dataset
+        min_score = 999
+        data_people = "999999_unknow"
+        #print("Total EMBS:", len(embsALL))
+        for id, (nameData, emb) in enumerate(embsALL):
+
+            cac_emb = self.calc_dist(emb, sb_emb)
+            if(cac_emb is not None):
+                #print("emb diff = ", cac_emb, nameData)
+                if(cac_emb<min_score):
+                    min_score = cac_emb
+                    data_people = nameData
+
+        #print(data_people, min_score)
+        return (data_people, min_score)
+
     def make_embs(self, photos_path, embsface_path, landmark_5_dat_path, image_types=(".jpg", ".jpeg", ".png")):
         if not os.path.exists(embsface_path):
             os.makedirs(embsface_path)
@@ -70,7 +193,7 @@ class faceRecognizer:
                             print("{} processing {}".format(idCount, img_path))
                             img_in = cv2.imread(img_path)
                             start_time = time.time()
-                            org_faces, aligned_faces = LM.align_face(img_in, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=2, maxOnly=False, drawRect=False)
+                            org_faces, aligned_faces, _ = LM.align_face(img_in, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=2, maxOnly=False)
                             #cv2.imshow("aligned_faces", aligned_faces)
                             time_used = round(time.time() - start_time, 3)
                             print("    time used:", time_used)
@@ -93,68 +216,27 @@ class faceRecognizer:
     def load_embs_memory(self, embs_path):
         all_embs = []
 
-        for id, file in enumerate(os.listdir(embs_path)):
-            file_path = os.path.join(embs_path, file)
+        for i, folder in enumerate(os.listdir(embs_path)):
+            #print(folder)
+            idName_folder = os.path.join(embs_path, folder)
+            #idName_folder = idName_folder.encode('utf-8', errors='surrogateescape').decode('utf-8')
 
-            if(os.path.isfile(file_path)):
-                filename, file_extension = os.path.splitext(file)
-                if(file_extension.lower() == '.embs'):
-                     try:
-                          all_embs.append((filename, joblib.load(file_path)) )
+            if(os.path.isdir(idName_folder)):
+                for id, file in enumerate(os.listdir(idName_folder)):
+                    file_path = os.path.join(idName_folder, file)
 
-                     except:
-                          logging.info("[error except] load_embs_memory() --> Error on loading embs: {}".format(file_path))
-                          pass
+                    if(os.path.isfile(file_path)):
+                        filename, file_extension = os.path.splitext(file)
+                        if(file_extension.lower() == '.embs'):
+                            try:
+                                all_embs.append((folder, joblib.load(file_path)) )
 
+                            except:
+                                print("[error except] load_embs_memory() --> Error on loading embs: {}".format(file_path))
+                                pass
+
+        #print(all_embs)
         self.embs_dataset = all_embs
-
-    def compare_embs(self, sb_emb):
-        min_score = 999
-        data_people = "999999_unknow"
-        for id, (nameData, emb) in enumerate(embsALL):
-            cac_emb = calc_dist(emb, sb_emb)
-            if(cac_emb is not None):
-                #print("emb diff = ", cac_emb, nameData)
-                if(cac_emb<min_score):
-                    min_score = cac_emb
-                    data_people = nameData
-
-        #print(data_people, min_score)
-        return (data_people, min_score)
-
-
-class faceDetect_Cascade:
-    def __init__(self, xmlPath):
-        self.face_cascade = cv2.CascadeClassifier(xml)
-        self.cascade_scale = 1.1
-        self.cascade_neighbors = 6
-        self.minFaceSize = (30,30)
-
-    def getFaces(self, img, DOWNSAMPLE=1.0):
-        if(DOWNSAMPLE_RATIO>1.0):
-            imSmall = cv2.resize(img,None, \
-                fx=1.0/DOWNSAMPLE, \
-                fy=1.0/DOWNSAMPLE, \
-                interpolation = cv2.INTER_LINEAR)
-        else:
-            imSmall = img.copy()
-
-        CASCADE = self.face_cascade
-        gray = cv2.cvtColor(imSmall, cv2.COLOR_BGR2GRAY)
-        faces = CASCADE.detectMultiScale(
-            gray,
-            scaleFactor = self.cascade_scale,
-            minNeighbors = self.cascade_neighbors,
-            minSize = self.minFaceSize,
-            flags = self.cv2.CASCADE_SCALE_IMAGE
-        )
-
-        bboxes = []
-        for (x,y,w,h) in faces:
-            if(w>minFaceSize[0] and h>minFaceSize[1]):
-                bboxes.append((x*DOWNSAMPLE, y*DOWNSAMPLE, w*DOWNSAMPLE, h*DOWNSAMPLE))
-
-        return bboxes
 
 class facial:
     def __init__(self, modelPath):
@@ -193,8 +275,9 @@ class facial:
                 dects_resize.append(dd)
 
         if(len(dets)>0 and maxOnly is True):
-            bbox.append((dd_max.left(), dd_max.top(), dd_max.right()-dd_max.left(), dd_max.bottom()-dd_max.top()))
-            dects_resize.append(dd_max)
+            if(dd_max.left()>0 and dd_max.top()>0 and (dd_max.right()-dd_max.left())>0 and (dd_max.bottom()-dd_max.top())>0):
+                bbox.append((dd_max.left(), dd_max.top(), dd_max.right()-dd_max.left(), dd_max.bottom()-dd_max.top()))
+                dects_resize.append(dd_max)
 
         return dects_resize, bbox
 
@@ -203,7 +286,7 @@ class facial:
             cv2.circle(im, (p[0], p[1]), radius, color, -1)
 
 
-    def landmark_face(self, img, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=1, maxOnly=False, drawRect=True):
+    def landmark_face(self, img, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=1, maxOnly=False):
         predictor = self.predictor
         '''
         if(int(DOWNSAMPLE)!=1):
@@ -230,9 +313,9 @@ class facial:
                 #landmarks.append((int(p.x * DOWNSAMPLE), int(p.y * DOWNSAMPLE)))                
                 landmarks.append((p.x, p.y))
 
-            if(drawRect is True):
-                cv2.rectangle(img, (bboxes[k][0], bboxes[k][1]), (bboxes[k][0]+bboxes[k][2], bboxes[k][1]+bboxes[k][3]), (0,255,0), 2)
-                self.renderFace(img, landmarks )
+            #if(drawRect is True):
+            #    cv2.rectangle(img, (bboxes[k][0], bboxes[k][1]), (bboxes[k][0]+bboxes[k][2], bboxes[k][1]+bboxes[k][3]), (0,255,0), 2)
+            #    self.renderFace(img, landmarks )
 
             faces_landmarks.append( (bboxes[k], landmarks) )
 
@@ -257,10 +340,10 @@ class facial:
 
         return (nx,ny,ew,eh)
 
-    def align_face(self, img, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=1, maxOnly=False, drawRect=True): 
-        faces_org, faces_aligned = [], []
-        image, face_landmarks, faces = self.landmark_face(img.copy(), DOWNSAMPLE=DOWNSAMPLE, DLIB_UPSAMPLE=DLIB_UPSAMPLE, \
-            maxOnly=maxOnly, drawRect=drawRect)
+    def align_face(self, img, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=1, maxOnly=False): 
+        faces_org, faces_aligned, face_align_bboxes = [], [], []
+        image, face_landmarks, face_bboxes = self.landmark_face(img.copy(), DOWNSAMPLE=DOWNSAMPLE, DLIB_UPSAMPLE=DLIB_UPSAMPLE, \
+            maxOnly=maxOnly)
 
         if(len(face_landmarks)>0):
             for (bbox, landmarks) in face_landmarks:
@@ -276,7 +359,6 @@ class facial:
                 landmarks.append((cx2, cy2))
 
                 face_area_org = img[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]
-                faces_org.append(face_area_org)
 
                 rotate_angle = self.angle_2points((cx1,cy1), (cx2,cy2))
                 (nx, ny, ew, eh) = self.area_expand(bbox, 1.5)
@@ -290,8 +372,10 @@ class facial:
                     xx, yy, ww, hh = face_aligned[0][0], face_aligned[0][1], face_aligned[0][2], face_aligned[0][3]
                     face_area_align_crop = face_area_align_org[yy:yy+hh, xx:xx+ww]
                     faces_aligned.append(face_area_align_crop)
+                    faces_org.append(face_area_org)
+                    face_align_bboxes.append(bbox)
 
-        return faces_org, faces_aligned
+        return faces_org, faces_aligned, face_align_bboxes
 
     def draw_point(self, img, p, color):
         cv2.circle(img, p, 2, color, 0)

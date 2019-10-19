@@ -3,14 +3,23 @@ import imutils
 import os, time
 from sklearn.externals import joblib
 from libFaces import facial
+from libFaces import webCam
 from libFaces import faceRecognizer
+
+video_file = "videos/news1.mp4"
+cam_id = 0
+webcam_size = (1024, 768)
+cam_rotate = 0
+flip_vertical = False
+flip_horizontal = False
+frame_display_size = (1024, 768)
 
 source_photos_path = "employee_photos/"
 dataset_path = "employee_embs/"
 image_types = (".jpg", ".png", ".jpeg")
 landmark_dat = "models/shape_predictor_5_face_landmarks.dat"
 
-#LM = facial(landmark_dat)
+LM = facial(landmark_dat)
 RG = faceRecognizer("models/openface.nn4.small2.v1.t7")
 
 #如果尚沒有embs dataset，則從原始相片來建立
@@ -20,10 +29,36 @@ if not os.path.exists(dataset_path) and os.path.exists(source_photos_path):
 #載入embs dataset到memory
 RG.load_embs_memory(dataset_path)
 
-#org_faces, aligned_faces = LM.align_face(img_in, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=1, maxOnly=True, drawRect=True)
-#for i, img in enumerate(org_faces):
-#    cv2.imshow("FACE_ORG", imutils.resize(img, height=120))
-#    cv2.imshow("FACE_ALIGNED", imutils.resize(aligned_faces[i], height=120))
-#    print(RG.get_embs(img))
-#cv2.waitKey(0)
+CAMERA = webCam(id=cam_id, videofile=video_file, size=webcam_size)
+if(CAMERA.working() is False):
+    print("webcam cannot work.")
+    sys.exit()
+
+def exit_app():
+    print("End.....")
+    sys.exit(0)
+
+if __name__ == '__main__':
+    hasFrame, frame_screen, frame_org = \
+        CAMERA.getFrame(rotate=cam_rotate, vflip=flip_vertical, hflip=flip_horizontal, resize=(frame_display_size[0], frame_display_size[1]))
+
+    while hasFrame:
+        org_faces, aligned_faces, bbox_faces = LM.align_face(frame_org, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=1, maxOnly=False)
+        print(len(org_faces), len(aligned_faces), len(bbox_faces))
+
+        for i, bbox in enumerate(bbox_faces):
+            cv2.rectangle(frame_org, bbox, (0,255,0), 2)
+            #print(aligned_faces[i].shape)
+            #cv2.imshow("FACE", aligned_faces[i])
+            #cv2.waitKey(0)
+            #this_embs = RG.get_embs(aligned_faces[i])
+            print(RG.verify_face(aligned_faces[i]))
+
+        cv2.imshow("FRAME", frame_org)
+        key = cv2.waitKey(1)
+        if(key==113):
+            exit_app()
+
+        hasFrame, frame_screen, frame_org = \
+            CAMERA.getFrame(rotate=cam_rotate, vflip=flip_vertical, hflip=flip_horizontal, resize=(frame_display_size[0], frame_display_size[1]))
 
