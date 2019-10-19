@@ -6,6 +6,7 @@ import imutils
 import numpy as np
 import math
 import dlib
+from sklearn.externals import joblib
 import _pickle as cPickle
 
 class faceRecognizer:
@@ -43,6 +44,52 @@ class faceRecognizer:
 
         return faceDescriptor
 
+    def make_embs(self, photos_path, embsface_path, landmark_5_dat_path, image_types=(".jpg", ".jpeg", ".png")):
+        if not os.path.exists(embsface_path):
+            os.makedirs(embsface_path)
+
+        LM = facial(landmark_5_dat_path)
+
+        for id, idName in enumerate(os.listdir(photos_path)):
+            idName_path = os.path.join(photos_path, idName)
+            if(os.path.isdir(idName_path)):
+                try:
+                    uid, uname = idName.split('_')
+
+                except:
+                    print(idName, "folder format error!")
+                    continue
+
+                for idCount, imgfile in enumerate(os.listdir(idName_path)):
+                    img_path = os.path.join(idName_path, imgfile)
+
+                    if(os.path.isfile(img_path)):
+                        filename, file_extension = os.path.splitext(imgfile)
+
+                        if(file_extension.lower() in image_types):
+                            print("{} processing {}".format(idCount, img_path))
+                            img_in = cv2.imread(img_path)
+                            start_time = time.time()
+                            org_faces, aligned_faces = LM.align_face(img_in, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=2, maxOnly=False, drawRect=False)
+                            #cv2.imshow("aligned_faces", aligned_faces)
+                            time_used = round(time.time() - start_time, 3)
+                            print("    time used:", time_used)
+
+                            if(len(aligned_faces)>0):
+                                embs_idname_path = os.path.join(embsface_path, idName)
+                                if not os.path.exists( embs_idname_path ):
+                                    os.makedirs(embs_idname_path)
+
+                                for i, img in enumerate(aligned_faces):
+                                    output_embs_file = os.path.join(embs_idname_path, filename+"_embs_"+str(i)+".embs")
+                                    cv2.imwrite(os.path.join(embs_idname_path, filename+"_face_"+str(i)+".jpg"), img)
+                                    embs = self.get_embs(img)
+                                    print("    write embs to", output_embs_file)
+                                    joblib.dump(embs, output_embs_file)
+
+                                print("    save finished.")
+                                print("")
+
     def load_embs_memory(self, embs_path):
         all_embs = []
 
@@ -59,7 +106,7 @@ class faceRecognizer:
                           logging.info("[error except] load_embs_memory() --> Error on loading embs: {}".format(file_path))
                           pass
 
-        return all_embs
+        self.embs_dataset = all_embs
 
     def compare_embs(self, sb_emb):
         min_score = 999
@@ -75,52 +122,6 @@ class faceRecognizer:
         #print(data_people, min_score)
         return (data_people, min_score)
 
-    def add_new_employees(self, image_waiting_path):
-
-        for file in os.listdir(image_waiting_path):
-            filename, file_extension = os.path.splitext(file)
-            file_extension = file_extension.lower()
-
-            if(file_extension == ".jpg" or file_extension==".jpeg" or file_extension==".png" or file_extension==".bmp"):
-                file_path = os.path.join(image_waiting_path, file)
-                image = cv2.imread(file_path)
-
-                face_boxes, face_scores = FACE_Detect.detect_face(image, score=0.5, target_device=cv2.dnn.DNN_TARGET_MYRIAD)
-                if(len(face_boxes)>0):
-                    max_face_area = 0
-                    cx, cy, ww, hh, xx, yy = 0, 0, 0, 0, 0, 0
-                    for i, (x,y,w,h) in enumerate(face_boxes):
-                        if( w*h > max_face_area):
-                            max_face_area = w*h
-                            cx, cy, ww, hh, xx, yy = (x+w/2), (y+h/2), w, h, x, y
-
-                    face_ref = image[yy:yy+hh, xx:xx+ww]
-
-                    face_embs = None
-                    rotated_img = faceLandmarks.align_face(face_ref, (xx, yy, ww, hh), image)
-                    face_boxes2, face_scores2 = FACE_Detect.detect_face(rotated_img, score=0.5, target_device=cv2.dnn.DNN_TARGET_MYRIAD)
-                    if(len(face_boxes2)>0):
-                            max_face_area = 0
-                            cx, cy, ww, hh, xx, yy = 0, 0, 0, 0, 0, 0
-                            for i, (x,y,w,h) in enumerate(face_boxes2):
-                                if( w*h > max_face_area):
-                                    max_face_area = w*h
-                                    cx, cy, ww, hh, xx, yy = (x+w/2), (y+h/2), w, h, x, y
-
-                            face_ref = rotated_img[yy:yy+hh, xx:xx+ww]
-                            if(max_face_area>0 and xx*yy>0):
-                                face_embs = FACE_RECOG.detect_face(face_ref, target_device=cv2.dnn.DNN_TARGET_MYRIAD)
-
-                    if(face_embs is not None):
-                        cv2.imwrite(os.path.join(path_emb_output, filename+".png"), face_ref)
-                        joblib.dump(face_embs, os.path.join(path_emb_output, filename+".embs"))
-                        os.remove(file_path)
-                        logging.info("add new employee from upload to :{}".format(os.path.join(path_emb_output, filename+".embs")))
-                    else:
-                        os.remove(file_path)
-                        logging.info("add new employee failed, get no embs from image.")
-
-        embsALL = load_embs_memory()
 
 class faceDetect_Cascade:
     def __init__(self, xmlPath):
