@@ -11,7 +11,7 @@ from libFaces import webCam
 from libFaces import faceRecognizer
 from libFaces import OBJTracking
 
-th_score = 0.4
+th_score = 0.35
 draw_face_box = True
 video_file = "videos/3_peoples.mp4"
 cam_id = 0
@@ -118,8 +118,25 @@ if __name__ == '__main__':
                 bbox_boxes.append(box)
                 bbox_success.append(True)
 
+
             Known_bbox = []
             Known_names = []
+
+            #IOU
+            if(len(last_Known_bbox)>0):
+                for i, last_box in enumerate(last_Known_bbox):
+                    for ii, this_box in enumerate(bbox_faces):
+                        iou_num = iou_bbox((last_box[0], last_box[1], last_box[0]+last_box[2], last_box[1]+last_box[3]),\
+                            (this_box[0],this_box[1],this_box[0]+this_box[2],this_box[1]+this_box[3]))
+
+                        print("IOU: ", iou_num, ":", last_box, this_box)
+                        if(iou_num>0.1):
+                            Known_bbox.append(this_box)
+                            Known_names.append(last_Known_names[i])
+                            bbox_faces.pop(ii)
+                            aligned_faces.pop(ii)
+                            org_faces.pop(ii)
+
 
             for i, bbox in enumerate(bbox_faces):
                 (name, score) = RG.verify_face(aligned_faces[i])
