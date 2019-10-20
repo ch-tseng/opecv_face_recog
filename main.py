@@ -2,7 +2,7 @@
 
 import cv2
 import imutils
-import os, time
+import os, sys, time
 import numpy as np
 from sklearn.externals import joblib
 from PIL import ImageFont, ImageDraw, Image
@@ -11,9 +11,9 @@ from libFaces import webCam
 from libFaces import faceRecognizer
 from libFaces import OBJTracking
 
-th_score = 0.45
+th_score = 0.4
 draw_face_box = True
-video_file = "videos/news1.mp4"
+video_file = "videos/news2.mp4"
 cam_id = 0
 webcam_size = (1024, 768)
 cam_rotate = 0
