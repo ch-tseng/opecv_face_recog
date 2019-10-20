@@ -624,7 +624,6 @@ class OBJTracking:
         multiTracker = self.multiTracker
 
         success, boxes = multiTracker.update(frame)
-        print("Multi-tracker reply:", boxes)
         self.multiTracker = multiTracker
 
         return (success, boxes)

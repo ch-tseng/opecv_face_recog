@@ -12,14 +12,14 @@ from libFaces import faceRecognizer
 from libFaces import OBJTracking
 
 th_score = 0.45
-draw_face_box = False
+draw_face_box = True
 video_file = "videos/news1.mp4"
 cam_id = 0
 webcam_size = (1024, 768)
 cam_rotate = 0
 flip_vertical = False
 flip_horizontal = False
-frame_display_size = (1024, 768)
+frame_display_size = (800, 600)
 interval_frame_reRecognize = 6
 
 write_output = True
@@ -79,6 +79,9 @@ def printText(txt, bg, color=(0,255,0,0), size=0.7, pos=(0,0), type="Chinese"):
 target_in_frame = False
 re_recognize = True
 frameID = 0
+last_Known_counts = 0
+display_name = None
+OB_TRACK = None
 
 if __name__ == '__main__':
     hasFrame, frame_screen, frame_org = \
@@ -87,49 +90,53 @@ if __name__ == '__main__':
     while hasFrame:
         bbox_success, bbox_boxes, bbox_names = [], [], []
 
+
         if(re_recognize is True):
             print("----------------> Re recofnize.")
             org_faces, aligned_faces, bbox_faces = LM.align_face(frame_org, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=1, maxOnly=False)
-            print("--------------------> Face detected:", len(org_faces), len(aligned_faces), len(bbox_faces))
             for box in bbox_faces:
                 bbox_boxes.append(box)
                 bbox_success.append(True)
 
+            Known_bbox = []
+            Known_names = []
+
+            for i, bbox in enumerate(bbox_faces):
+                (name, score) = RG.verify_face(aligned_faces[i])
+                print(name, score)
+
+                if(score<th_score):
+                    this_name = name
+                    print_name = True
+                    Known_bbox.append(bbox)
+                    Known_names.append(name)
+
             OB_TRACK = OBJTracking()
-            OB_TRACK.setROIs(frame_org, bbox_boxes, "MEDIANFLOW")
+            OB_TRACK.setROIs(frame_org, Known_bbox, "KCF")
             re_recognize = False
 
-        #else:
-        track_boxes_num = 0
-        (success, roi_boxes) = OB_TRACK.trackROI(frame_org)
-        print("Tracking:", success, roi_boxes)
-        for i, box in enumerate(roi_boxes):
-            bbox_boxes.append(box)
-            bbox_success.append(success)
-            if(success is True):
-                track_boxes_num += 1
+        if(OB_TRACK is not None):
+            tracking_bbox, tracking_names = [], []
+            print("Tracking......")
+            print("    ", Known_names, Known_bbox)
+            (success, roi_boxes) = OB_TRACK.trackROI(frame_org)
+            print("    ", success, roi_boxes)
+            for i, bbox in enumerate(roi_boxes):
+                if(success is True):
+                    tracking_bbox.append(roi_boxes)
+                    tracking_names.append(Known_names[i])
+                    color = OB_TRACK.roi_colors[i]
+                    if(draw_face_box is True):
+                        cv2.rectangle(frame_org, (int(bbox[0]), int(bbox[1])), (int(bbox[0]+bbox[2]), int(bbox[1]+bbox[3])), (color[0],color[1],color[2]), 2)
 
-        if(track_boxes_num==0 or (track_boxes_num != len(roi_boxes)) or (frameID % interval_frame_reRecognize==0) ):
-            print("ROI Numbers:", len(roi_boxes))
+                    this_name = Known_names[i]
+                    display_name = this_name.split("_")
+                    font_size = bbox[2]/64
+                    frame_org = printText(display_name[1], frame_org, color=(color[0],color[1],color[2],0), size=font_size, pos=(bbox[0]+15,int(bbox[1]-(bbox[3]/2))), type="Chinese")
+
+
+        if(len(tracking_bbox)==0):
             re_recognize = True
-
-        for i, bbox in enumerate(roi_boxes):
-            (name, score) = RG.verify_face(aligned_faces[i])
-            #print(name, score)
-
-            if(score<th_score):
-                this_name = name
-            else:
-                this_name = "99999_不認識"
-
-            color = OB_TRACK.roi_colors[i]
-            #bbox_names.append(this_name)
-            if(draw_face_box is True):
-                cv2.rectangle(frame_org, (int(bbox[0]), int(bbox[1])), (int(bbox[0]+bbox[2]), int(bbox[1]+bbox[3])), (color[0],color[1],color[2]), 2)
-    
-            display_name = this_name.split("_")
-            font_size = bbox[2]/64
-            frame_org = printText(display_name[1], frame_org, color=(color[0],color[1],color[2],0), size=font_size, pos=(bbox[0]+15,bbox[1]-30), type="Chinese")
 
         cv2.imshow("FRAME", frame_org)
         CAMERA.write_video(frame_org)
@@ -141,3 +148,4 @@ if __name__ == '__main__':
             CAMERA.getFrame(rotate=cam_rotate, vflip=flip_vertical, hflip=flip_horizontal, resize=(frame_display_size[0], frame_display_size[1]))
 
         frameID += 1
+
