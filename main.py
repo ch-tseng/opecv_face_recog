@@ -129,7 +129,7 @@ if __name__ == '__main__':
                         iou_num = iou_bbox((last_box[0], last_box[1], last_box[0]+last_box[2], last_box[1]+last_box[3]),\
                             (this_box[0],this_box[1],this_box[0]+this_box[2],this_box[1]+this_box[3]))
 
-                        print("IOU: ", iou_num, ":", last_box, this_box)
+                        #print("IOU: ", iou_num, ":", last_box, this_box)
                         if(iou_num>0.1):
                             Known_bbox.append(this_box)
                             Known_names.append(last_Known_names[i])
@@ -154,7 +154,7 @@ if __name__ == '__main__':
 
         if(OB_TRACK is not None):
             tracking_bbox, tracking_names = [], []
-            #print("Tracking......")
+            print("     Tracking......")
             #print("    ", Known_names, Known_bbox)
             (success, roi_boxes) = OB_TRACK.trackROI(frame_org)
             #print("    ", success, roi_boxes)
