@@ -13,7 +13,7 @@ from libFaces import OBJTracking
 
 th_score = 0.4
 draw_face_box = True
-video_file = "videos/news2.mp4"
+video_file = "videos/3_peoples.mp4"
 cam_id = 0
 webcam_size = (1024, 768)
 cam_rotate = 0
@@ -76,12 +76,32 @@ def printText(txt, bg, color=(0,255,0,0), size=0.7, pos=(0,0), type="Chinese"):
 
     return bg
 
+def iou_bbox(boxA, boxB):
+
+    boxA = [int(x) for x in boxA]
+    boxB = [int(x) for x in boxB]
+
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+
+    interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
+
+    boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
+    boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
+    
+    iou = interArea / float(boxAArea + boxBArea - interArea)
+
+    return iou
+
 target_in_frame = False
 re_recognize = True
 frameID = 0
 last_Known_counts = 0
 display_name = None
 OB_TRACK = None
+last_Known_bbox = []
 
 if __name__ == '__main__':
     hasFrame, frame_screen, frame_org = \
@@ -103,7 +123,7 @@ if __name__ == '__main__':
 
             for i, bbox in enumerate(bbox_faces):
                 (name, score) = RG.verify_face(aligned_faces[i])
-                print(name, score)
+                #print(name, score)
 
                 if(score<th_score):
                     this_name = name
@@ -117,10 +137,22 @@ if __name__ == '__main__':
 
         if(OB_TRACK is not None):
             tracking_bbox, tracking_names = [], []
-            print("Tracking......")
-            print("    ", Known_names, Known_bbox)
+            #print("Tracking......")
+            #print("    ", Known_names, Known_bbox)
             (success, roi_boxes) = OB_TRACK.trackROI(frame_org)
-            print("    ", success, roi_boxes)
+            #print("    ", success, roi_boxes)
+
+            #IOU
+            if(len(last_Known_bbox)>0):
+                for i, last_box in enumerate(last_Known_bbox):
+                    for ii, this_box in enumerate(Known_bbox):
+                        iou_num = iou_bbox((last_box[0], last_box[1], last_box[0]+last_box[2], last_box[1]+last_box[3]),\
+                            (this_box[0],this_box[1],this_box[0]+this_box[2],this_box[1]+this_box[3]))
+
+                        print("IOU: ", iou_num, ":", last_box, this_box)
+                        #if(iou_num>0.1):
+                        #    Known_bbox.pop[ii]
+
             for i, bbox in enumerate(roi_boxes):
                 if(success is True):
                     tracking_bbox.append(roi_boxes)
@@ -134,8 +166,11 @@ if __name__ == '__main__':
                     font_size = bbox[2]/64
                     frame_org = printText(display_name[1], frame_org, color=(color[0],color[1],color[2],0), size=font_size, pos=(bbox[0]+15,int(bbox[1]-(bbox[3]/2))), type="Chinese")
 
+                    last_Known_bbox = Known_bbox
+                    last_Known_names = Known_names
 
-        if(len(tracking_bbox)==0):
+
+        if(len(tracking_bbox)<3):
             re_recognize = True
 
         cv2.imshow("FRAME", frame_org)
@@ -146,6 +181,7 @@ if __name__ == '__main__':
 
         hasFrame, frame_screen, frame_org = \
             CAMERA.getFrame(rotate=cam_rotate, vflip=flip_vertical, hflip=flip_horizontal, resize=(frame_display_size[0], frame_display_size[1]))
+
 
         frameID += 1
 
