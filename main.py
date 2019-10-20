@@ -140,13 +140,13 @@ if __name__ == '__main__':
 
             for i, bbox in enumerate(bbox_faces):
                 (name, score) = RG.verify_face(aligned_faces[i])
-                #print(name, score)
 
                 if(score<th_score):
                     this_name = name
                     print_name = True
                     Known_bbox.append(bbox)
                     Known_names.append(name)
+                    print(name, score)
 
             OB_TRACK = OBJTracking()
             OB_TRACK.setROIs(frame_org, Known_bbox, "KCF")
@@ -159,16 +159,6 @@ if __name__ == '__main__':
             (success, roi_boxes) = OB_TRACK.trackROI(frame_org)
             #print("    ", success, roi_boxes)
 
-            #IOU
-            if(len(last_Known_bbox)>0):
-                for i, last_box in enumerate(last_Known_bbox):
-                    for ii, this_box in enumerate(Known_bbox):
-                        iou_num = iou_bbox((last_box[0], last_box[1], last_box[0]+last_box[2], last_box[1]+last_box[3]),\
-                            (this_box[0],this_box[1],this_box[0]+this_box[2],this_box[1]+this_box[3]))
-
-                        print("IOU: ", iou_num, ":", last_box, this_box)
-                        #if(iou_num>0.1):
-                        #    Known_bbox.pop[ii]
 
             for i, bbox in enumerate(roi_boxes):
                 if(success is True):
