@@ -125,6 +125,7 @@ class faceRecognizer:
 
         nameLabelMap = {}
         labels = []
+        uscore = []
         imagePaths = []
         for i, subfolder in enumerate(subfolders):
             for x in os.listdir(subfolder):
@@ -132,9 +133,10 @@ class faceRecognizer:
                 if x.endswith('jpg'):
                     imagePaths.append(xpath)
                     labels.append(i)
-                    nameLabelMap[xpath] = subfolder.split('/')[-1]
+                    nameLabelMap[xpath] = subfolder.split('/')[-2]
+                    uscore.append(subfolder.split('/')[-1])
 
-        return nameLabelMap
+        return nameLabelMap, uscore
 
     def get_embs(self, alignedFace):
         recModel = self.model
@@ -176,12 +178,11 @@ class faceRecognizer:
         data_people = "999999_unknow"
         #print("Total EMBS:", len(embsALL))
         for id, (nameData, emb) in enumerate(embsALL):
-
             cac_emb = self.calc_dist(emb, sb_emb)
             if(cac_emb is not None):
                 #print("emb diff = ", cac_emb, nameData)
                 if(cac_emb<min_score):
-                    min_score = cac_emb
+                    min_score = cac_emb 
                     data_people = nameData
 
         #print(data_people, min_score)
@@ -197,7 +198,7 @@ class faceRecognizer:
             idName_path = os.path.join(photos_path, idName)
             if(os.path.isdir(idName_path)):
                 try:
-                    uid, uname = idName.split('_')
+                    uid, uname, uscore = idName.split('_')
 
                 except:
                     print(idName, "folder format error!")
@@ -262,6 +263,12 @@ class facial:
     def __init__(self, modelPath):
         self.detector = dlib.get_frontal_face_detector()
         self.predictor = dlib.shape_predictor(modelPath)
+        self.align_time = 0
+        self.align_count = 0
+        self.landmark_time = 0
+        self.landmark_count = 0
+        self.detect_time = 0
+        self.detect_count = 0
 
     def detect_face(self, img, DOWNSAMPLE=1.0, DLIB_UPSAMPLE=5, maxOnly=False):
         if(int(DOWNSAMPLE)!=1):
@@ -272,6 +279,7 @@ class facial:
         else:
             imSmall = img.copy()
 
+        start_time = time.time()
         detector = self.detector
         dets = detector(imSmall, DLIB_UPSAMPLE)
         #print("dets:", dets)
@@ -299,6 +307,9 @@ class facial:
                 bbox.append((dd_max.left(), dd_max.top(), dd_max.right()-dd_max.left(), dd_max.bottom()-dd_max.top()))
                 dects_resize.append(dd_max)
 
+        self.detect_count += 1
+        self.detect_time += (time.time()-start_time)
+
         return dects_resize, bbox
 
     def renderFace(self, im, landmarks, color=(0, 255, 0), radius=6):
@@ -320,6 +331,8 @@ class facial:
         #gray = cv2.cvtColor(imSmall, cv2.COLOR_BGR2GRAY)
         faces_rects, bboxes = self.detect_face(img, DOWNSAMPLE=DOWNSAMPLE, DLIB_UPSAMPLE=DLIB_UPSAMPLE, maxOnly=maxOnly)
         #print("Faces:", len(faces_rects))
+
+        start_time = time.time()
         faces_landmarks = []
         #bboxes = []
         for (k, d) in enumerate(faces_rects):
@@ -338,6 +351,9 @@ class facial:
             #    self.renderFace(img, landmarks )
 
             faces_landmarks.append( (bboxes[k], landmarks) )
+
+        self.landmark_time += (time.time()-start_time)
+        self.landmark_count += 1
 
         return img, faces_landmarks, bboxes
 
@@ -365,6 +381,7 @@ class facial:
         image, face_landmarks, face_bboxes = self.landmark_face(img.copy(), DOWNSAMPLE=DOWNSAMPLE, DLIB_UPSAMPLE=DLIB_UPSAMPLE, \
             maxOnly=maxOnly)
 
+        start_time = time.time()
         if(len(face_landmarks)>0):
             for (bbox, landmarks) in face_landmarks:
                 x_a1, x_a2 = landmarks[0][0], landmarks[1][0] 
@@ -394,6 +411,10 @@ class facial:
                     faces_aligned.append(face_area_align_crop)
                     faces_org.append(face_area_org)
                     face_align_bboxes.append(bbox)
+
+        align_time = time.time()-start_time
+        self.align_count += 1
+        self.align_time += align_time
 
         return faces_org, faces_aligned, face_align_bboxes
 
